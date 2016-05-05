@@ -1,0 +1,43 @@
+page: hello, basic_frame
+    module: c
+
+    &call mpi_run
+        $print Hello world from $mpi_name, $mpi_id/$mpi_size
+
+        $local tn_data
+        &call mpi_send, 0, 1, &tn_data, MPI_INT, 1
+            &call pack
+                tn_data = rand()
+            &call unpack
+                $print Node $(to): received data from node $(from): $tn_data
+
+subcode: mpi_run
+    $include mpi
+    $uselib mpi
+
+    $global int mpi_size, int mpi_id
+    MPI_Init(NULL, NULL);
+    MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_id);
+
+    $global char mpi_name[MPI_MAX_PROCESSOR_NAME]
+    $local tn_len
+    MPI_Get_processor_name(mpi_name, &tn_len);
+
+    BLOCK
+
+    MPI_Finalize();
+
+subcode: mpi_send(from, to, data, type, size)
+    BLOCK 
+
+    subcode: pack
+        $if mpi_id == $(from)
+            BLOCK
+            MPI_Send($(data), $(size), $(type), $(to), 0, MPI_COMM_WORLD)
+    subcode: unpack
+        $if mpi_id == $(to)
+            MPI_Recv($(data), $(size), $(type), $(from), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE)
+            BLOCK
+
+
