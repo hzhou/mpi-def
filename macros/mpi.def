@@ -1,0 +1,42 @@
+fncode: n_main
+    &call mpi_run
+        $call main2
+
+macros:
+    comm: MPI_COMM_WORLD
+
+subcode: mpi_run
+    $include mpi
+    $uselib mpi
+
+    $global n_mpi_size, n_mpi_id, is_mpi_main
+    MPI_Init(NULL, NULL);
+    MPI_Comm_size($(comm), &n_mpi_size);
+    MPI_Comm_rank($(comm), &n_mpi_id);
+    $if n_mpi_id==0
+        is_mpi_main = 1
+    $else
+        is_mpi_main = 0
+
+    $global s_mpi_name[MPI_MAX_PROCESSOR_NAME]
+    $local tn_len
+    MPI_Get_processor_name(s_mpi_name, &tn_len);
+
+    BLOCK
+
+    MPI_Finalize();
+
+#----------------------------------------------- 
+subcode: mpi_send(from, to, data, type, size)
+    BLOCK 
+
+    subcode: pack
+        $if n_mpi_id == $(from)
+            BLOCK
+            MPI_Send($(data), $(size), $(type), $(to), 0, $(comm))
+    subcode: unpack
+        $if n_mpi_id == $(to)
+            MPI_Recv($(data), $(size), $(type), $(from), 0, $(comm), MPI_STATUS_IGNORE)
+            BLOCK
+
+
