@@ -3,6 +3,7 @@ fncode: n_main
         $call main2
 
 macros:
+    mpi: 1
     comm: MPI_COMM_WORLD
 
 subcode: mpi_run
@@ -39,4 +40,18 @@ subcode: mpi_send(from, to, data, type, size)
             MPI_Recv($(data), $(size), $(type), $(from), 0, $(comm), MPI_STATUS_IGNORE)
             BLOCK
 
+subcode: mpi_sync(v, type)
+    MPI_Bcast(&$(v), 1, $(type), 0, $(comm))
 
+subcode: mpi_cast(v, type, count)
+    $if !is_mpi_main
+        $allocate($(count)) $(v)
+    MPI_Bcast($(v), $(count), $(type), 0, $(comm))
+
+#----------------------------------------------- 
+subcode: debug_hook
+    $include unistd
+    $print "mpi [$n_mpi_id] PID %d is ready for attach ...", getpid()
+    $local int debug_i=0
+    $while debug_i == 0
+        sleep(5)
