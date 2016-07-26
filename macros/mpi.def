@@ -26,6 +26,27 @@ subcode: mpi_run
     BLOCK
 
     MPI_Finalize();
+    $(if:mpi_distribute)
+        free(pn_mpi_offs)
+        free(pn_mpi_size)
+
+subcode: mpi_distribute(N)
+    $(setmacro:mpi_distribute=1)
+    $global n_mpi_N
+    $global pn_mpi_offs = NULL, pn_mpi_size = NULL
+    $if pn_mpi_offs == NULL
+        $allocate(n_mpi_size) pn_mpi_offs, pn_mpi_size
+    n_mpi_N = $(N)
+    tn_per = $(N)/n_mpi_size
+    tn_remain = $(N) % n_mpi_size
+    j = 0
+    $for i=0:n_mpi_size
+        pn_mpi_offs[i] = j
+        $if i<tn_remain
+            pn_mpi_size[i] = tn_per + 1
+        $else
+            pn_mpi_size[i] = tn_per
+        j+=pn_mpi_size[i]
 
 #----------------------------------------------- 
 subcode: mpi_send(from, to, data, type, size)
@@ -40,6 +61,7 @@ subcode: mpi_send(from, to, data, type, size)
             MPI_Recv($(data), $(size), $(type), $(from), 0, $(comm), MPI_STATUS_IGNORE)
             BLOCK
 
+#----------------------------------------------- 
 subcode: mpi_sync(v, type)
     MPI_Bcast(&$(v), 1, $(type), 0, $(comm))
 
@@ -48,10 +70,17 @@ subcode: mpi_cast(v, type, count)
         $allocate($(count)) $(v)
     MPI_Bcast($(v), $(count), $(type), 0, $(comm))
 
+subcode: mpi_scatter(global, local, type)
+    MPI_Scatterv($(global), pn_mpi_size, pn_mpi_offs, $(type), $(local), pn_mpi_size[n_mpi_id], $(type), 0, $(comm))
+
+subcode: mpi_gather(global, local, type)
+    MPI_Gatherv($(local), pn_mpi_size[n_mpi_id], $(type), $(global), pn_mpi_size, pn_mpi_offs, $(type), 0, $(comm))
+
 #----------------------------------------------- 
-subcode: debug_hook
+subcode: debug_hook(cond)
     $include unistd
-    $print "mpi [$n_mpi_id] PID %d is ready for attach ...", getpid()
-    $local int debug_i=0
-    $while debug_i == 0
-        sleep(5)
+    $if $(cond)
+        $print "mpi [$n_mpi_id] PID %d is ready for attach ...", getpid()
+        $local int debug_i=0
+        $while debug_i == 0
+            sleep(5)
