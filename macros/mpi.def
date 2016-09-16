@@ -6,6 +6,14 @@ macros:
     mpi: 1
     comm: MPI_COMM_WORLD
 
+    mpi_n1: MPI_BYTE
+    mpi_n2: MPI_SHORT
+    mpi_n4: MPI_INT
+    mpi_n8: MPI_2INT
+    mpi_f4: MPI_FLOAT
+    mpi_f8: MPI_DOUBLE
+    mpi_c16: MPI_LONG_DOUBLE
+
 subcode: mpi_run
     $include mpi
     $uselib mpi
@@ -26,7 +34,7 @@ subcode: mpi_run
     BLOCK
 
     MPI_Finalize();
-    $(if:mpi_distribute)
+    $if pn_mpi_offs
         free(pn_mpi_offs)
         free(pn_mpi_size)
 
@@ -35,7 +43,7 @@ subcode: mpi_distribute(N)
     $global n_mpi_N
     $global pn_mpi_offs = NULL, pn_mpi_size = NULL
     $if pn_mpi_offs == NULL
-        $allocate(n_mpi_size) pn_mpi_offs, pn_mpi_size
+        $allocate(n_mpi_size+1) pn_mpi_offs, pn_mpi_size
     n_mpi_N = $(N)
     tn_per = $(N)/n_mpi_size
     tn_remain = $(N) % n_mpi_size
@@ -47,6 +55,7 @@ subcode: mpi_distribute(N)
         $else
             pn_mpi_size[i] = tn_per
         j+=pn_mpi_size[i]
+    pn_mpi_offs[n_mpi_size] = $(N)
 
 #----------------------------------------------- 
 subcode: mpi_send(from, to, data, type, size)
