@@ -2,6 +2,7 @@ include: c/mpi.def
 
 page: hello, basic_frame
     module: c
+    run: mpirun -np 4 out/hello
 
     $print Hello world from $s_mpi_name, $n_mpi_id/$n_mpi_size
 
