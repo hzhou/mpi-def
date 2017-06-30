@@ -1,4 +1,4 @@
-fncode: n_main
+fncode: _basic_main(main)
     &call mpi_run
         $call main2
 
@@ -34,9 +34,10 @@ subcode: mpi_run
     BLOCK
 
     MPI_Finalize();
-    $if pn_mpi_offs
-        free(pn_mpi_offs)
-        free(pn_mpi_size)
+    $(if:mpi_distribute)
+        $if pn_mpi_offs
+            free(pn_mpi_offs)
+            free(pn_mpi_size)
 
 subcode: mpi_distribute(N)
     $(setmacro:mpi_distribute=1)
