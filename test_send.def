@@ -1,0 +1,14 @@
+include: c/mpi.def
+
+page: test_send, mpi_frame
+    module: c
+    exe: mpiexec -np 4 out/test_send
+
+    $print Hello world from $mpi_name, $mpi_id/$mpi_size
+
+    $local tn_data
+    &call2 mpi_send, 0, 1, &tn_data, MPI_INT, 1
+        tn_data = mpi_id*1000+rand()%1000
+    recv:
+        $print Node $(to): received data from node $(from): $tn_data
+
