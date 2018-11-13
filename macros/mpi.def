@@ -1,4 +1,4 @@
-fncode: mpi_frame
+subcode: mpi_frame
     $include stdio
     $include stdlib
     $call @global
@@ -6,8 +6,14 @@ fncode: mpi_frame
         &call mpi_run
             $call main
 
+subcode: _autoload
+    $register_name(win) MPI_Win
+    $register_name(status) MPI_Status
+    $register_prefix(req) MPI_Request
+
 macros:
     mpi: 1
+    tag: 0
     comm: MPI_COMM_WORLD
 
     mpi_n1: MPI_BYTE
@@ -62,15 +68,32 @@ subcode: mpi_distribute(N)
         j+=pn_mpi_size[i]
     pn_mpi_offs[mpi_size] = $(N)
 
-#----------------------------------------------- 
-subcode: mpi_send(from, to, data, type, size)
+#---- Point to Point -------------------:------- 
+# define data as $(buf), $(type), $(size)
+subcode: mpi_send(from, to)
+    ...
     $if mpi_id == $(from)
-        BLOCK1
-        MPI_Send($(data), $(size), $(type), $(to), 0, $(comm))
+        DUMP_STUB send...
+        tn_ret = MPI_Send($(data), $(to), $(tag), $(comm))
     $elif mpi_id == $(to)
-        MPI_Recv($(data), $(size), $(type), $(from), 0, $(comm), MPI_STATUS_IGNORE)
-        BLOCK2
+        tn_ret = MPI_Recv($(data), $(from), $(tag), $(comm), MPI_STATUS_IGNORE)
+        DUMP_STUB recv...
+    BLOCK
 
+subcode: mpi_isend(from, to)
+    $local MPI_Request req, MPI_Status status
+    ...
+    $if mpi_id == $(from)
+        DUMP_STUB send...
+        tn_ret = MPI_Isend($(data), $(to), $(tag), $(comm), &req)
+        DUMP_STUB sending...
+        tn_ret = MPI_Wait(&req, &status)
+    $elif mpi_id == $(to)
+        tn_ret = MPI_Irecv($(data), $(from), $(tag), $(comm), &req)
+        DUMP_STUB recving...
+        tn_ret = MPI_Wait(&req, &status)
+        DUMP_STUB recv...
+    BLOCK
 #----------------------------------------------- 
 subcode: mpi_sync(v, type)
     MPI_Bcast(&$(v), 1, $(type), 0, $(comm))
@@ -86,7 +109,11 @@ subcode: mpi_scatter(global, local, type)
 subcode: mpi_gather(global, local, type)
     MPI_Gatherv($(local), pn_mpi_size[mpi_id], $(type), $(global), pn_mpi_size, pn_mpi_offs, $(type), 0, $(comm))
 
-#----------------------------------------------- 
+#---- convenience ---------------------------- 
+subcode: hello
+    $print Hello from $mpi_name, $mpi_id/$mpi_size
+
+#--------------------------------------------- 
 subcode: debug_hook(cond)
     $include unistd
     $if $(cond)

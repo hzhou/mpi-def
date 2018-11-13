@@ -1,0 +1,14 @@
+include: c/mpi.def
+
+page: test_isend, mpi_frame
+    module: c
+    exe: mpiexec -np 4 out/test_isend
+
+    $print "MPI_REQUEST_NULL is %x", MPI_REQUEST_NULL
+
+    $local MPI_Request req
+    $(if:1)
+        MPI_Ibarrier(MPI_COMM_WORLD, &req)
+    $(else)
+        MPI_Ibarrier(MPI_COMM_SELF, &req)
+    $print "  $mpi_id - MPI_Ibarrier: req = %x", req
