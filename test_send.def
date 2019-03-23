@@ -6,11 +6,17 @@ page: test_send, mpi_frame
 
     $print Hello world from $mpi_name, $mpi_id/$mpi_size
 
-    $local tn_data
-    $(set:data=&tn_data, 1, MPI_INT)
-    &call mpi_send, 0, 1
-        $(block:send...)
-            tn_data = mpi_id*1000+rand()%1000
-        $(block:recv...)
-            $print Node $(to): received data from node $(from): $tn_data
+    &call p2p_region, 0, 1
+        $local tn_data
 
+        $(if:is_main)
+            tn_data = 1234
+        $call send_to, &tn_data, 1, MPI_INT
+        $(if:!is_main)
+            $print Node $(_p): received data from node $(p1): $tn_data
+
+        $(if:!is_main)
+            tn_data = 4321
+        $call send_back, &tn_data, 1, MPI_INT
+        $(if:is_main)
+            $print Node $(_p): received data from node $(p2): $tn_data

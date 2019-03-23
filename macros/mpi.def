@@ -9,6 +9,8 @@ subcode: mpi_frame
 subcode: _autoload
     $register_name(win) MPI_Win
     $register_name(status) MPI_Status
+    $register_prefix(comm) MPI_Comm
+    $register_prefix(info) MPI_Info
     $register_prefix(req) MPI_Request
 
 macros:
@@ -68,8 +70,52 @@ subcode: mpi_distribute(N)
         j+=pn_mpi_size[i]
     pn_mpi_offs[mpi_size] = $(N)
 
+#---------------------------------------- 
+subcode: p2p_region(p1, p2)
+    $if mpi_id == $(p1)
+        $(set:is_main=1)
+        BLOCK
+    $elif mpi_id == $(p2)
+        BLOCK
+
+    subcode: send_to(@data)
+        $(if:is_main)
+            $call _send, $(p2)
+        $(else)
+            $call _recv, $(p1)
+
+    subcode: send_back(@data)
+        $(if:!is_main)
+            $call _send, $(p1)
+        $(else)
+            $call _recv, $(p2)
+
+subcode: ifelse_region(p0)
+    $if mpi_id == $(p0)
+        $(set:is_main=1)
+        BLOCK
+    $else
+        BLOCK
+
+subcode: ring_region
+    # left and right
+    $if mpi_id == 0
+        $(set:is_main=1)
+        $(set:_l=mpi_size-1)
+        $(set:_r=1)
+        BLOCK
+    $elif mpi_id==mpi_size-1
+        $(set:_l=mpi_id-1)
+        $(set:_r=0)
+        BLOCK
+    $else
+        $(set:_l=mpi_id-1)
+        $(set:_r=mpi_id+1)
+        BLOCK
+
 #---- Point to Point -------------------:------- 
 # define data as $(buf), $(type), $(size)
+
 subcode: mpi_send(from, to)
     ...
     $if mpi_id == $(from)
@@ -94,6 +140,12 @@ subcode: mpi_isend(from, to)
         tn_ret = MPI_Wait(&req, &status)
         DUMP_STUB recv...
     BLOCK
+#----------------------------------------------- 
+subcode: _send(to)
+    tn_ret = MPI_Send($(data), $(to), $(tag), $(comm))
+
+subcode: _recv(from)
+    tn_ret = MPI_Recv($(data), $(from), $(tag), $(comm), MPI_STATUS_IGNORE)
 #----------------------------------------------- 
 subcode: mpi_sync(v, type)
     MPI_Bcast(&$(v), 1, $(type), 0, $(comm))
