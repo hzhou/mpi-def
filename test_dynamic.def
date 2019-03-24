@@ -1,0 +1,67 @@
+include: c/mpi.def
+
+# run: test_worker
+
+page: test_master, basic_frame
+    module: c
+    exe: mpiexec -np 1 out/test_master
+
+    $print test_master starting ...
+    MPI_Init(NULL, NULL)
+
+    $local info_host, comm_workers
+    info_host = MPI_INFO_NULL
+    MPI_Comm_spawn("out/test_worker", MPI_ARGV_NULL, 1, info_host, 0, MPI_COMM_SELF, &comm_workers, MPI_ERRCODES_IGNORE)
+
+    $call test_send
+
+    MPI_Finalize()
+
+page: test_worker, basic_frame
+    module: c
+    exe: none
+
+    $print test_worker starting ...
+    MPI_Init(NULL, NULL)
+
+    $local comm_master
+    MPI_Comm_get_parent(&comm_master)
+
+    $call test_send
+ 
+    MPI_Finalize()
+
+#---------------------------------------- 
+subcode: _autoload
+    $include mpi
+    $uselib mpi
+
+subcode: test_send
+    $local tn_data
+    $(set:data=&tn_data, 1, MPI_INT)
+
+    $(if:_pagename=test_master)
+        $(set:to=0)
+        $(set:comm=comm_workers)
+    $(else)
+        $(set:from=0)
+        $(set:comm=comm_master)
+
+    &call mpi_inter_send
+        $(block:send...)
+            tn_data = 1*1000+rand()%1000
+        $(block:recv...)
+            $print worker: received data from master: $tn_data
+
+#---------------------------------------- 
+# define $(from), $(to)
+subcode: mpi_inter_send
+    ...
+    $(if:to)
+        DUMP_STUB send...
+        tn_ret = MPI_Send($(data), $(to), $(tag), $(comm))
+    $(elif:from)
+        tn_ret = MPI_Recv($(data), $(from), $(tag), $(comm), MPI_STATUS_IGNORE)
+        DUMP_STUB recv...
+    BLOCK
+
