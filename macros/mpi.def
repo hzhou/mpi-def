@@ -78,17 +78,19 @@ subcode: p2p_region(p1, p2)
     $elif mpi_id == $(p2)
         BLOCK
 
-    subcode: send_to(@data)
+    subcode: p2p(a1, a2)
         $(if:is_main)
-            $call _send, $(p2)
+            $call $(a1), $(p2)
         $(else)
-            $call _recv, $(p1)
+            $call $(a2), $(p1)
+
+    # ---- example ----
+    subcode: send_to(@data)
+        $call p2p, _send, _recv
 
     subcode: send_back(@data)
-        $(if:!is_main)
-            $call _send, $(p1)
-        $(else)
-            $call _recv, $(p2)
+        $call p2p, _recv, _send
+
 
 subcode: ifelse_region(p0)
     $if mpi_id == $(p0)
@@ -140,12 +142,18 @@ subcode: mpi_isend(from, to)
         tn_ret = MPI_Wait(&req, &status)
         DUMP_STUB recv...
     BLOCK
-#----------------------------------------------- 
+
+#---- shorthand ---------------------------------- 
 subcode: _send(to)
     tn_ret = MPI_Send($(data), $(to), $(tag), $(comm))
+subcode: _isend(to)
+    tn_ret = MPI_Isend($(data), $(to), $(tag), $(comm), $(req))
 
 subcode: _recv(from)
     tn_ret = MPI_Recv($(data), $(from), $(tag), $(comm), MPI_STATUS_IGNORE)
+subcode: _irecv(from)
+    tn_ret = MPI_Irecv($(data), $(from), $(tag), $(comm), $(req))
+
 #----------------------------------------------- 
 subcode: mpi_sync(v, type)
     MPI_Bcast(&$(v), 1, $(type), 0, $(comm))
