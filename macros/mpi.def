@@ -27,13 +27,14 @@ macros:
     mpi_c16: MPI_LONG_DOUBLE
 
 subcode: mpi_run
-    $include mpi
-    $uselib mpi
+    $(if:!SKIP_SYSTEM_MPI)
+        $include mpi
+        $uselib mpi
 
     $global int mpi_size, int mpi_id, is_mpi_main
-    MPI_Init(NULL, NULL);
-    MPI_Comm_size($(comm), &mpi_size);
-    MPI_Comm_rank($(comm), &mpi_id);
+    MPI_Init(NULL, NULL)
+    MPI_Comm_size($(comm), &mpi_size)
+    MPI_Comm_rank($(comm), &mpi_id)
     $if mpi_id==0
         is_mpi_main = 1
     $else
@@ -41,11 +42,11 @@ subcode: mpi_run
 
     $global char mpi_name[MPI_MAX_PROCESSOR_NAME]
     $local tn_len
-    MPI_Get_processor_name(mpi_name, &tn_len);
+    MPI_Get_processor_name(mpi_name, &tn_len)
 
     BLOCK
 
-    MPI_Finalize();
+    MPI_Finalize()
     $(if:mpi_distribute)
         $if pn_mpi_offs
             free(pn_mpi_offs)

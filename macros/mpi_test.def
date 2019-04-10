@@ -1,12 +1,5 @@
-include: c/mpi.def
-
-page: test_send, mpi_frame
-    module: c
-    exe: mpiexec -np 4 out/test_send
-
-    $print Hello world from $mpi_name, $mpi_id/$mpi_size
-
-    &call p2p_region, 0, 1
+subcode: test_p2p(p1, p2)
+    &call p2p_region, $(p1), $(p2)
         $local tn_data
 
         $(if:is_main)
