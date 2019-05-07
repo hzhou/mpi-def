@@ -31,14 +31,10 @@ subcode: mpi_run
         $include mpi
         $uselib mpi
 
-    $global int mpi_size, int mpi_id, is_mpi_main
+    $global int mpi_size, int mpi_id
     MPI_Init(NULL, NULL)
     MPI_Comm_size($(comm), &mpi_size)
     MPI_Comm_rank($(comm), &mpi_id)
-    $if mpi_id==0
-        is_mpi_main = 1
-    $else
-        is_mpi_main = 0
 
     $global char mpi_name[MPI_MAX_PROCESSOR_NAME]
     $local tn_len
@@ -74,44 +70,49 @@ subcode: mpi_distribute(N)
 #---------------------------------------- 
 subcode: p2p_region(p1, p2)
     $if mpi_id == $(p1)
-        $(set:is_main=1)
+        $(set:is_p1=1)
         BLOCK
     $elif mpi_id == $(p2)
+        $(set:is_p2=1)
         BLOCK
-
-    subcode: p2p(a1, a2)
-        $(if:is_main)
-            $call $(a1), $(p2)
-        $(else)
-            $call $(a2), $(p1)
 
     # ---- example ----
     subcode: send_to(@data)
-        $call p2p, _send, _recv
+        &call parse_data
+            $(if:is_p1)
+                $call _send, $(p2)
+            $(else)
+                $call _recv, $(p1)
 
     subcode: send_back(@data)
-        $call p2p, _recv, _send
-
+        &call parse_data
+            $(if:is_p1)
+                $call _recv, $(p2)
+            $(else)
+                $call _send, $(p1)
 
 subcode: ifelse_region(p0)
     $if mpi_id == $(p0)
-        $(set:is_main=1)
+        $(set:is_p1=1)
         BLOCK
     $else
+        $(set:is_p2=1)
         BLOCK
 
 subcode: ring_region
     # left and right
     $if mpi_id == 0
-        $(set:is_main=1)
+        $(set:is_first=1)
         $(set:_l=mpi_size-1)
         $(set:_r=1)
         BLOCK
     $elif mpi_id==mpi_size-1
+        $(set:is_last=1)
         $(set:_l=mpi_id-1)
         $(set:_r=0)
         BLOCK
     $else
+        $(set:is_middle=1)
         $(set:_l=mpi_id-1)
         $(set:_r=mpi_id+1)
         BLOCK
@@ -145,22 +146,32 @@ subcode: mpi_isend(from, to)
     BLOCK
 
 #---- shorthand ---------------------------------- 
+subcode: parse_data
+    $(split:data)
+    $(if:p_n=3)
+        $(set:data_src=$(data))
+        $(set:data_dst=$(data))
+    $(elif:p_n=4)
+        $(set:data_src=$(p_1),$(p_3),$(p_4))
+        $(set:data_dst=$(p_2),$(p_3),$(p_4))
+    BLOCK
+
 subcode: _send(to)
-    tn_ret = MPI_Send($(data), $(to), $(tag), $(comm))
+    tn_ret = MPI_Send($(data_src), $(to), $(tag), $(comm))
 subcode: _isend(to)
-    tn_ret = MPI_Isend($(data), $(to), $(tag), $(comm), $(req))
+    tn_ret = MPI_Isend($(data_src), $(to), $(tag), $(comm), $(req))
 
 subcode: _recv(from)
-    tn_ret = MPI_Recv($(data), $(from), $(tag), $(comm), MPI_STATUS_IGNORE)
+    tn_ret = MPI_Recv($(data_dst), $(from), $(tag), $(comm), MPI_STATUS_IGNORE)
 subcode: _irecv(from)
-    tn_ret = MPI_Irecv($(data), $(from), $(tag), $(comm), $(req))
+    tn_ret = MPI_Irecv($(data_dst), $(from), $(tag), $(comm), $(req))
 
 #----------------------------------------------- 
 subcode: mpi_sync(v, type)
     MPI_Bcast(&$(v), 1, $(type), 0, $(comm))
 
 subcode: mpi_cast(v, type, count)
-    $if !is_mpi_main
+    $if mpi_id != 0
         $allocate($(count)) $(v)
     MPI_Bcast($(v), $(count), $(type), 0, $(comm))
 

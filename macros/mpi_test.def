@@ -2,14 +2,31 @@ subcode: test_p2p(p1, p2)
     &call p2p_region, $(p1), $(p2)
         $local tn_data
 
-        $(if:is_main)
+        $(if:is_p1)
             tn_data = 1234
         $call send_to, &tn_data, 1, MPI_INT
-        $(if:!is_main)
+        $(if:is_p2)
             $print Node $(p2): received data from node $(p1): $tn_data
 
-        $(if:!is_main)
+        $(if:is_p2)
             tn_data = 4321
         $call send_back, &tn_data, 1, MPI_INT
-        $(if:is_main)
+        $(if:is_p1)
             $print Node $(p1): received data from node $(p2): $tn_data
+
+subcode: test_p2p_v2(p1, p2)
+    &call p2p_region, $(p1), $(p2)
+        $local tn_src, tn_dst
+
+        $(if:is_p1)
+            tn_src = 1234
+        $(else)
+            tn_src = 4321
+
+        $call send_to, &tn_src, &tn_dst, 1, MPI_INT
+        $call send_back, &tn_src, &tn_dst, 1, MPI_INT
+
+        $(if:is_p1)
+            $print Node $(p1): received data from node $(p2): $tn_dst
+        $(else)
+            $print Node $(p2): received data from node $(p1): $tn_dst
