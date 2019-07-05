@@ -7,7 +7,6 @@ subcode: mpi_frame
             $call main
 
 subcode: _autoload
-    $register_name(win) MPI_Win
     $register_name(status) MPI_Status
     $register_prefix(comm) MPI_Comm
     $register_prefix(info) MPI_Info
@@ -36,36 +35,15 @@ subcode: mpi_run
     MPI_Comm_size($(comm), &mpi_size)
     MPI_Comm_rank($(comm), &mpi_id)
 
-    $global char mpi_name[MPI_MAX_PROCESSOR_NAME]
-    $local tn_len
-    MPI_Get_processor_name(mpi_name, &tn_len)
+    $(if:0)
+        $global char mpi_name[MPI_MAX_PROCESSOR_NAME]
+        $local tn_len
+        MPI_Get_processor_name(mpi_name, &tn_len)
 
     BLOCK
 
+    $call @on_mpi_finalize
     MPI_Finalize()
-    $(if:mpi_distribute)
-        $if pn_mpi_offs
-            free(pn_mpi_offs)
-            free(pn_mpi_size)
-
-subcode: mpi_distribute(N)
-    $(setmacro:mpi_distribute=1)
-    $global n_mpi_N
-    $global pn_mpi_offs = NULL, pn_mpi_size = NULL
-    $if pn_mpi_offs == NULL
-        $allocate(mpi_size+1) pn_mpi_offs, pn_mpi_size
-    n_mpi_N = $(N)
-    tn_per = $(N)/mpi_size
-    tn_remain = $(N) % mpi_size
-    j = 0
-    $for i=0:mpi_size
-        pn_mpi_offs[i] = j
-        $if i<tn_remain
-            pn_mpi_size[i] = tn_per + 1
-        $else
-            pn_mpi_size[i] = tn_per
-        j+=pn_mpi_size[i]
-    pn_mpi_offs[mpi_size] = $(N)
 
 #---------------------------------------- 
 subcode: p2p_region(p1, p2)
@@ -127,9 +105,31 @@ subcode: ring_region
         $(set:_r=mpi_id+1)
         BLOCK
 
-#---- Point to Point -------------------:------- 
-# define data as $(buf), $(type), $(size)
+#---- shorthand ---------------------------------- 
+subcode: parse_data
+    $(split:data)
+    $(if:p_n=3)
+        #- buf, count, type
+        $(set:data_src=$(data))
+        $(set:data_dst=$(data))
+    $(elif:p_n=4)
+        #- src_buf, dst_buf, count, type
+        $(set:data_src=$(p_1),$(p_3),$(p_4))
+        $(set:data_dst=$(p_2),$(p_3),$(p_4))
+    BLOCK
 
+subcode: _send(to)
+    tn_ret = MPI_Send($(data_src), $(to), $(tag), $(comm))
+subcode: _isend(to)
+    tn_ret = MPI_Isend($(data_src), $(to), $(tag), $(comm), $(req))
+
+subcode: _recv(from)
+    tn_ret = MPI_Recv($(data_dst), $(from), $(tag), $(comm), MPI_STATUS_IGNORE)
+subcode: _irecv(from)
+    tn_ret = MPI_Irecv($(data_dst), $(from), $(tag), $(comm), $(req))
+
+#---- pt2pt -------------------:------- 
+# define data as $(buf), $(type), $(size)
 subcode: mpi_send(from, to)
     ...
     $if mpi_id == $(from)
@@ -155,37 +155,12 @@ subcode: mpi_isend(from, to)
         DUMP_STUB recv...
     BLOCK
 
-#---- shorthand ---------------------------------- 
-subcode: parse_data
-    $(split:data)
-    $(if:p_n=3)
-        #- buf, count, type
-        $(set:data_src=$(data))
-        $(set:data_dst=$(data))
-    $(elif:p_n=4)
-        #- src_buf, dst_buf, count, type
-        $(set:data_src=$(p_1),$(p_3),$(p_4))
-        $(set:data_dst=$(p_2),$(p_3),$(p_4))
-    BLOCK
-
-subcode: _send(to)
-    tn_ret = MPI_Send($(data_src), $(to), $(tag), $(comm))
-subcode: _isend(to)
-    tn_ret = MPI_Isend($(data_src), $(to), $(tag), $(comm), $(req))
-
-subcode: _recv(from)
-    tn_ret = MPI_Recv($(data_dst), $(from), $(tag), $(comm), MPI_STATUS_IGNORE)
-subcode: _irecv(from)
-    tn_ret = MPI_Irecv($(data_dst), $(from), $(tag), $(comm), $(req))
-
 #---- collectives ----------------------------------- 
-subcode: mpi_sync(v, type)
-    MPI_Bcast(&$(v), 1, $(type), 0, $(comm))
+subcode: mpi_barrier
+    MPI_Barrier($(comm))
 
-subcode: mpi_cast(v, type, count)
-    $if mpi_id != 0
-        $allocate($(count)) $(v)
-    MPI_Bcast($(v), $(count), $(type), 0, $(comm))
+subcode: mpi_bcast
+    MPI_Bcast($(data), 0, $(comm))
 
 subcode: mpi_scatter(global, local, type)
     MPI_Scatterv($(global), pn_mpi_size, pn_mpi_offs, $(type), $(local), pn_mpi_size[mpi_id], $(type), 0, $(comm))
@@ -212,6 +187,32 @@ subcode: mpi_put(tgt, offset)
 #---- convenience ---------------------------- 
 subcode: hello
     $print Hello from $mpi_name, $mpi_id/$mpi_size
+
+#---- app: distribute --------------------------- 
+subcode: mpi_distribute(N)
+    $(setmacro:mpi_distribute=1)
+    $global n_mpi_N
+    $global pn_mpi_offs = NULL, pn_mpi_size = NULL
+    $if pn_mpi_offs == NULL
+        $allocate(mpi_size+1) pn_mpi_offs, pn_mpi_size
+    n_mpi_N = $(N)
+    tn_per = $(N)/mpi_size
+    tn_remain = $(N) % mpi_size
+    j = 0
+    $for i=0:mpi_size
+        pn_mpi_offs[i] = j
+        $if i<tn_remain
+            pn_mpi_size[i] = tn_per + 1
+        $else
+            pn_mpi_size[i] = tn_per
+        j+=pn_mpi_size[i]
+    pn_mpi_offs[mpi_size] = $(N)
+
+subcode:: on_mpi_finalize
+    $(if:mpi_distribute)
+        $if pn_mpi_offs
+            free(pn_mpi_offs)
+            free(pn_mpi_size)
 
 #--------------------------------------------- 
 subcode: debug_hook(cond)
