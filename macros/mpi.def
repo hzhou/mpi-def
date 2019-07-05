@@ -180,7 +180,7 @@ subcode: mpi_win_allocate(size)
 
 subcode: mpi_put(tgt, offset)
     $(split:data)
-    MPI_Win_lock(MPI_LOCK_SHARED, $(tgt), 0, $(win))
+    MPI_Win_lock(MPI_LOCK_EXCLUSIVE, $(tgt), 0, $(win))
     MPI_Put($(data), $(tgt), $(offset), $(p_2), $(p_3), $(win))
     MPI_Win_unlock($(tgt), $(win))
 
