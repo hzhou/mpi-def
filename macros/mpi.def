@@ -159,9 +159,11 @@ subcode: mpi_isend(from, to)
 subcode: parse_data
     $(split:data)
     $(if:p_n=3)
+        #- buf, count, type
         $(set:data_src=$(data))
         $(set:data_dst=$(data))
     $(elif:p_n=4)
+        #- src_buf, dst_buf, count, type
         $(set:data_src=$(p_1),$(p_3),$(p_4))
         $(set:data_dst=$(p_2),$(p_3),$(p_4))
     BLOCK
@@ -176,7 +178,7 @@ subcode: _recv(from)
 subcode: _irecv(from)
     tn_ret = MPI_Irecv($(data_dst), $(from), $(tag), $(comm), $(req))
 
-#----------------------------------------------- 
+#---- collectives ----------------------------------- 
 subcode: mpi_sync(v, type)
     MPI_Bcast(&$(v), 1, $(type), 0, $(comm))
 
@@ -190,6 +192,22 @@ subcode: mpi_scatter(global, local, type)
 
 subcode: mpi_gather(global, local, type)
     MPI_Gatherv($(local), pn_mpi_size[mpi_id], $(type), $(global), pn_mpi_size, pn_mpi_offs, $(type), 0, $(comm))
+
+#---- onesided ---------------------------- 
+#- implicit: $(data), $(win)
+subcode: _autoload
+    $register_name(win) MPI_Win
+
+subcode: mpi_win_allocate(size)
+    $global MPI_Win win, void *mpi_base
+    MPI_Win_allocate($(size), 1, MPI_INFO_NULL, $(comm), &mpi_base, &win)
+    $(setmacro:win=win)
+
+subcode: mpi_put(tgt, offset)
+    $(split:data)
+    MPI_Win_lock(MPI_LOCK_SHARED, $(tgt), 0, $(win))
+    MPI_Put($(data), $(tgt), $(offset), $(p_2), $(p_3), $(win))
+    MPI_Win_unlock($(tgt), $(win))
 
 #---- convenience ---------------------------- 
 subcode: hello
