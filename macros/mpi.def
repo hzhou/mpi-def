@@ -184,6 +184,10 @@ subcode: mpi_put(tgt, offset)
     MPI_Put($(data), $(tgt), $(offset), $(p_2), $(p_3), $(win))
     MPI_Win_unlock($(tgt), $(win))
 
+subcode:: on_mpi_finalize
+    $(if:win=win)
+        MPI_Win_free(&$(win))
+
 #---- convenience ---------------------------- 
 subcode: hello
     $print Hello from $mpi_name, $mpi_id/$mpi_size
