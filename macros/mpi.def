@@ -79,6 +79,31 @@ subcode: p2p_region(p1, p2)
             $call _recv, $(p1)
             $call _send, $(p1)
 
+    # ---- isend/irecv ----
+    subcode: isend_to(@data)
+        &call parse_data
+            $(if:is_p1)
+                $call _isend, $(p2)
+            $(else)
+                $call _irecv, $(p1)
+
+    subcode: isend_back(@data)
+        &call parse_data
+            $(if:is_p1)
+                $call _irecv, $(p2)
+            $(else)
+                $call _isend, $(p1)
+
+    subcode: iexchange(local, remote, size)
+        $(set:data_src=$(local), $(size), MPI_BYTE)
+        $(set:data_dst=$(remote), $(size), MPI_BYTE)
+        $(if:is_p1)
+            $call _isend, $(p2)
+            $call _irecv, $(p2)
+        $(else)
+            $call _irecv, $(p1)
+            $call _isend, $(p1)
+
 subcode: ifelse_region(p0)
     $if mpi_id == $(p0)
         $(set:is_p1=1)
@@ -121,12 +146,12 @@ subcode: parse_data
 subcode: _send(to)
     tn_ret = MPI_Send($(data_src), $(to), $(tag), $(comm))
 subcode: _isend(to)
-    tn_ret = MPI_Isend($(data_src), $(to), $(tag), $(comm), $(req))
+    tn_ret = MPI_Isend($(data_src), $(to), $(tag), $(comm), &$(req))
 
 subcode: _recv(from)
     tn_ret = MPI_Recv($(data_dst), $(from), $(tag), $(comm), MPI_STATUS_IGNORE)
 subcode: _irecv(from)
-    tn_ret = MPI_Irecv($(data_dst), $(from), $(tag), $(comm), $(req))
+    tn_ret = MPI_Irecv($(data_dst), $(from), $(tag), $(comm), &$(req))
 
 #---- pt2pt -------------------:------- 
 # define data as $(buf), $(type), $(size)

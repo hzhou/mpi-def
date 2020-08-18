@@ -1,22 +1,27 @@
-include: c/mpi.def
+include: macros/mpi.def
 
 page: test_send, mpi_frame
     module: c
     exe: mpiexec -np 4 out/test_send
 
-    $print Hello world from $mpi_name, $mpi_id/$mpi_size
+    $print Hello world from $mpi_id/$mpi_size
 
     &call p2p_region, 0, 1
         $local tn_data
 
-        $(if:is_main)
+        $(if:is_p1)
             tn_data = 1234
         $call send_to, &tn_data, 1, MPI_INT
-        $(if:!is_main)
+        $(if:!is_p1)
             $print Node $(p2): received data from node $(p1): $tn_data
 
-        $(if:!is_main)
-            tn_data = 4321
-        $call send_back, &tn_data, 1, MPI_INT
-        $(if:is_main)
-            $print Node $(p1): received data from node $(p2): $tn_data
+        $(set:SIZE=100*1024)
+        $local pn_buf
+        $local_allocate($(SIZE)) pn_buf
+        $(if:!is_p1)
+            # tn_data = 4321
+            $for i=0:$(SIZE)
+                pn_buf[i] = i
+        $call send_back, pn_buf, $(SIZE), MPI_INT
+        $(if:is_p1)
+            $print Node $(p1): received data from node $(p2): ${pn_buf[1234]}
