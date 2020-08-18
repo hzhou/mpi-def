@@ -1,0 +1,33 @@
+include: c/mpi.def
+
+page: test_bw, mpi_frame
+    module: c
+    exe: mpirun -np 2 basic/test_bw
+
+    $call osu_bw, 1024, 64, 100
+
+subcode: osu_bw(size, window, iters)
+    $allocate($(size)) s_buf
+    $local tn_data
+
+    $local MPI_Request * reqs
+    $allocate($(window)) reqs
+
+    $local t_start, t_end: double
+
+    $(mset:tag1=100, tag2=101)
+    &call p2p_region, 0, 1
+        t_start = MPI_Wtime()
+        $for i=0:$(iters)
+            $for j=0:$(window)
+                $(set:req=reqs[j])
+                $call isend_to, s_buf, $(size), MPI_CHAR
+            MPI_Waitall($(window), reqs, MPI_STATUSES_IGNORE)
+            $call send_back, &tn_data, 1, MPI_INT
+        t_end = MPI_Wtime()
+
+        $(if:is_p1)
+            tf_tmp = $(size)/1e6 * $(iters) * $(window)
+            $print "  $(size) - %f\n", tf_tmp / (t_end-t_start)
+
+

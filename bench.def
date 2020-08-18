@@ -1,0 +1,13 @@
+page: bench
+    module: perl
+
+    my $count=20
+    my ($sum1, $sum2)
+    $for $count
+        my $t = `mpirun -np 2 basic/test_bw`
+        $if $t=~/(\d+) - (\S+)/
+            $sum1 += $2
+            $sum2 += $2*$2
+    my $avg = $sum1/$count
+    my $std = sqrt($sum2/$count - $avg*$avg)
+    $print "    repeat of $count - $avg +/- $std\n"
