@@ -1,0 +1,40 @@
+subcode: launch_threads(N_threads)
+    # 0th entry reserved for main thread
+    $local pthread_t tid_list[$(N_threads)]
+    $local int id_list[$(N_threads)]
+    $for i=1:$(N_threads)
+        id_list[i] = i
+        pthread_create(&tid_list[i], NULL, thread_fn, (void *) (&id_list[i]))
+
+    $block
+        $my int tid = 0 
+        $call @set_affinity
+        $(set:tid=0)
+        BLOCK
+
+    $for i=1:$(N_threads)
+        pthread_join(tid_list[i], NULL)
+
+    # --------
+    $function thread_fn(void *p): void *
+        $my int tid = *(int *)p
+        $call @set_affinity
+        $(set:tid=tid)
+        BLOCK
+
+subcode: _autoload
+    $include pthread
+    $uselib pthread
+
+#---- affinity ------------------------------------ 
+subcode: _autoload
+    $(if:SET_AFFINITY=1)
+        $uselib _GNU_SOURCE
+        $include sched
+
+subcode: set_affinity
+    $(if:SET_AFFINITY=1)
+        $local cpu_set_t cpuset
+        CPU_ZERO(&cpuset)
+        CPU_SET(tid, &cpuset)
+        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)

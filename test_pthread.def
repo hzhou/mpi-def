@@ -1,0 +1,7 @@
+include: c/pthread.def
+module: c
+
+page: test
+    &call launch_threads, 4
+        $print Hello from thread $tid
+
