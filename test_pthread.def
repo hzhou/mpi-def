@@ -1,7 +1,32 @@
 include: c/pthread.def
+include: c/bench.def
 module: c
 
 page: test
-    &call launch_threads, 4
+    &call launch_threads, $(N_THREADS)
         $print Hello from thread $tid
+        $(if:tid=0)
+            $call main_fn
+        $(else)
+            $call sub_fn
+
+macros:
+    N_THREADS: 4
+    N_iter: 10000000
+
+subcode: main_fn
+    $global int counter = 0
+    tn_total = $(N_iter) * ($(N_THREADS) - 1)
+
+    $call time_start
+    $while __atomic_load_n(&counter, __ATOMIC_ACQUIRE) < tn_total
+        NOOP
+    $call time_finish, dur
+
+    dur *= 1e9 / $(N_iter)
+    $print $(N_THREADS) threads, $(N_iter)x, avg.duration $dur ns
+
+subcode: sub_fn
+    $for i=0:$(N_iter)
+        __atomic_fetch_add(&counter, 1, __ATOMIC_ACQ_REL)
 

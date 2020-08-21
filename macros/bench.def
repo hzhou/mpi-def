@@ -2,7 +2,7 @@ subcode: _autoload
     $include <sys/time.h>
 
 subcode: time_start
-    $local struct timeval t_start, t_finish
+    $local t_start, t_finish: struct timeval
     gettimeofday(&t_start, 0)
 
 subcode: time_finish(dur)
