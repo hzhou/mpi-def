@@ -1,0 +1,39 @@
+include: c/mpi.def
+
+page: test_latency, mpi_frame
+    module: c
+    exe: mpirun -np 2 basic/test_latency
+
+    $(set:SIZE=8)
+    $allocate($(SIZE)) s_buf
+    $call get_latency, $(SIZE), 100000
+
+page: osu_latency
+    $(set:MAX=5000000)
+    $allocate($(MAX)) s_buf
+    $for int size=1; size<$(MAX); size*=2
+        $if size < 8192
+            tn_iter = 10000
+        $else
+            tn_iter = 1000
+        $call get_latency, size, tn_iter
+
+subcode: get_latency(size, iters)
+    $local tn_data
+
+    $local t_start, t_end: double
+
+    $(mset:tag1=100, tag2=101)
+
+    &call p2p_region, 0, 1
+        $(for:try in 0, 1)
+            $for i=0:$(iters)
+                t_start = MPI_Wtime()
+                $for j=0:$(window)
+                    $call send_to, s_buf, $(size), MPI_CHAR
+                    $call send_back, s_buf, $(size), MPI_CHAR
+                t_end = MPI_Wtime()
+
+            $(if:try=1 and is_p1)
+                $print "  $(size) - %f\n", (t_end-t_start)*1e6/(2.0*$(iters))
+
