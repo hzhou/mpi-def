@@ -2,7 +2,7 @@ page: bench
     module: perl
 
     
-    my $cmd = "mpirun -bind-to hwthread -map-by core -np 2 basic/test_bw"
+    my $cmd = "mpirun -bind-to hwthread -map-by core -np 2 out/test_latency"
     $print $cmd ...
 
     $print " warm-up ..."

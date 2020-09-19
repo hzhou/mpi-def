@@ -1,14 +1,17 @@
 include: c/mpi.def
 
+run: osu_bw
 page: test_bw, mpi_frame
     module: c
-    exe: mpirun -np 2 basic/test_bw
+    exe: mpirun -np 2 out/test_bw
 
     $(set:SIZE=1024)
     $allocate($(SIZE)) s_buf
     $call get_bw, $(SIZE), 64, 2000
 
-page: osu_bw
+page: osu_bw, mpi_frame
+    module: c
+    exe: mpirun -np 2 out/osu_bw
     $(set:MAX=5000000)
     $allocate($(MAX)) s_buf
     $for int size=1; size<$(MAX); size*=2
@@ -42,6 +45,6 @@ subcode: get_bw(size, window, iters)
 
             $(if:try=1 and is_p1)
                 tf_tmp = $(size)/1e6 * $(iters) * $(window)
-                $print "  $(size) - %f\n", tf_tmp / (t_end-t_start)
+                $print "  %10d - %f\n", $(size), tf_tmp / (t_end-t_start)
 
 
