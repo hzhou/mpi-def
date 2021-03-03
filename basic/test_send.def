@@ -1,0 +1,73 @@
+include: c/mpi.def
+
+run: persist_bsend_short
+
+page: send_short, mpi_frame
+    module: c
+    exe: mpiexec -np 2 out/send_short
+
+    &call p2p_region, 0, 1
+        $local tn_data
+
+        $(if:is_p1)
+            tn_data = 1234
+        $call send_to, &tn_data, 1, MPI_INT
+        $(if:!is_p1)
+            $print Node $(p2): received data from node $(p1): $tn_data
+
+page: bsend_short, mpi_frame
+    module: c
+    exe: mpiexec -np 2 out/bsend_short
+
+    $global char p_buffer[1024]
+    MPI_Buffer_attach(p_buffer, 1024)
+
+    $local tn_data = 1234
+    $(set:data=&tn_data, 1, MPI_INT)
+
+    $if mpi_id == 0
+        MPI_Bsend($(data), 1, $(tag), $(comm))
+    $else
+        MPI_Recv($(data), 0, $(tag), $(comm), MPI_STATUS_IGNORE)
+        $print Got msg tn_data = $tn_data
+
+page: ibsend_short, mpi_frame
+    module: c
+    exe: mpiexec -l -np 2 out/ibsend_short
+
+    $global char p_buffer[1024]
+    MPI_Buffer_attach(p_buffer, 1024)
+
+    $local tn_data = 1234
+    $(set:data=&tn_data, 1, MPI_INT)
+
+    $if mpi_id == 0
+        $local MPI_Request req
+        MPI_Ibsend($(data), 1, $(tag), $(comm), &req)
+        MPI_Wait(&req, MPI_STATUS_IGNORE)
+        $print Done MPI_Ibsend
+    $else
+        MPI_Recv($(data), 0, $(tag), $(comm), MPI_STATUS_IGNORE)
+        $print Got msg tn_data = $tn_data
+
+page: persist_bsend_short, mpi_frame
+    module: c
+    exe: mpiexec -l -np 2 $exe
+
+    $global char p_buffer[1024]
+    MPI_Buffer_attach(p_buffer, 1024)
+
+    $local tn_data = 1234
+    $(set:data=&tn_data, 1, MPI_INT)
+
+    $if mpi_id == 0
+        $local MPI_Request req
+        MPI_Bsend_init($(data), 1, $(tag), $(comm), &req)
+        MPI_Start(&req);
+        MPI_Wait(&req, MPI_STATUS_IGNORE)
+        MPI_Request_free(&req)
+        $print Done MPI_Ibsend
+    $else
+        MPI_Recv($(data), 0, $(tag), $(comm), MPI_STATUS_IGNORE)
+        $print Got msg tn_data = $tn_data
+
