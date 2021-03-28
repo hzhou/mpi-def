@@ -1,3 +1,5 @@
+include: c/mpi_info.def
+
 subcode: mpi_frame
     $include stdio
     $include stdlib
@@ -44,6 +46,13 @@ subcode: mpi_run
 
     $call @on_mpi_finalize
     MPI_Finalize()
+
+#----------------------------------------
+subcode: _autoload
+    $plugin mpicall
+
+subcode: mpicall(fname, @params)
+    $(fname)($(params))
 
 #---------------------------------------- 
 subcode: p2p_region(p1, p2)
