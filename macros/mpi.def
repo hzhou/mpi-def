@@ -51,11 +51,12 @@ subcode: mpi_run
 subcode: _autoload
     $plugin mpicall
 
-subcode: mpicall(fname, @params)
+# overwrite subcode mpicall to change the default error behavior
+subcode:0 mpicall(fname, @params)
     $(fname)($(params))
 
 #---------------------------------------- 
-subcode: p2p_region(p1, p2)
+subcode: with_p2p(p1, p2)
     $if mpi_id == $(p1)
         $(set:is_p1=1)
         BLOCK
