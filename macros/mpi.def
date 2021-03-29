@@ -13,6 +13,7 @@ subcode: _autoload
     $register_prefix(comm) MPI_Comm
     $register_prefix(info) MPI_Info
     $register_prefix(req) MPI_Request
+    $register_prefix(dt) MPI_Datatype
 
 macros:
     mpi: 1
@@ -68,51 +69,26 @@ subcode: with_p2p(p1, p2)
     subcode: send_to(@data)
         &call parse_data
             $(if:is_p1)
-                $call _send, $(p2)
+                $call mpi_send, $(p2)
             $(else)
-                $call _recv, $(p1)
+                $call mpi_recv, $(p1)
 
     subcode: send_back(@data)
         &call parse_data
             $(if:is_p1)
-                $call _recv, $(p2)
+                $call mpi_recv, $(p2)
             $(else)
-                $call _send, $(p1)
+                $call mpi_send, $(p1)
 
     subcode: exchange(local, remote, size)
         $(set:data_src=$(local), $(size), MPI_BYTE)
         $(set:data_dst=$(remote), $(size), MPI_BYTE)
         $(if:is_p1)
-            $call _send, $(p2)
-            $call _recv, $(p2)
+            $call mpi_send, $(p2)
+            $call mpi_recv, $(p2)
         $(else)
-            $call _recv, $(p1)
-            $call _send, $(p1)
-
-    # ---- isend/irecv ----
-    subcode: isend_to(@data)
-        &call parse_data
-            $(if:is_p1)
-                $call _isend, $(p2)
-            $(else)
-                $call _irecv, $(p1)
-
-    subcode: isend_back(@data)
-        &call parse_data
-            $(if:is_p1)
-                $call _irecv, $(p2)
-            $(else)
-                $call _isend, $(p1)
-
-    subcode: iexchange(local, remote, size)
-        $(set:data_src=$(local), $(size), MPI_BYTE)
-        $(set:data_dst=$(remote), $(size), MPI_BYTE)
-        $(if:is_p1)
-            $call _isend, $(p2)
-            $call _irecv, $(p2)
-        $(else)
-            $call _irecv, $(p1)
-            $call _isend, $(p1)
+            $call mpi_recv, $(p1)
+            $call mpi_send, $(p1)
 
 subcode: ifelse_region(p0)
     $if mpi_id == $(p0)
@@ -153,42 +129,39 @@ subcode: parse_data
         $(set:data_dst=$(p_2),$(p_3),$(p_4))
     BLOCK
 
-subcode: _send(to)
-    tn_ret = MPI_Send($(data_src), $(to), $(tag), $(comm))
-subcode: _isend(to)
-    tn_ret = MPI_Isend($(data_src), $(to), $(tag), $(comm), &$(req))
+#---- pt2pt ----------------------------------- 
+subcode: mpi_send(to)
+    $(if:!data_src)
+        $(set:data_src=$(data))
 
-subcode: _recv(from)
-    tn_ret = MPI_Recv($(data_dst), $(from), $(tag), $(comm), MPI_STATUS_IGNORE)
-subcode: _irecv(from)
-    tn_ret = MPI_Irecv($(data_dst), $(from), $(tag), $(comm), &$(req))
+    $(if:!send)
+        $mpicall MPI_Send, $(data_src), $(to), $(tag), $(comm)
+    $(elif:send=isend)
+        $mpicall MPI_Isend, $(data_src), $(to), $(tag), $(comm), &$(req)
+    $(elif:send=bsend)
+        $mpicall MPI_Bsend, $(data_src), $(to), $(tag), $(comm)
 
-#---- pt2pt -------------------:------- 
-# define data as $(buf), $(type), $(size)
-subcode: mpi_send(from, to)
-    ...
-    $if mpi_id == $(from)
-        DUMP_STUB send...
-        tn_ret = MPI_Send($(data), $(to), $(tag), $(comm))
-    $elif mpi_id == $(to)
-        tn_ret = MPI_Recv($(data), $(from), $(tag), $(comm), MPI_STATUS_IGNORE)
-        DUMP_STUB recv...
-    BLOCK
+subcode: mpi_recv(from)
+    $(if:!data_dst)
+        $(set:data_dst=$(data))
+    $(if:recv=irecv)
+        $(set:tail=&$(req))
+    $(elif:status)
+        $(set:tail=&$(status))
+    $(else)
+        $(set:tail=MPI_STATUS_IGNORE)
 
-subcode: mpi_isend(from, to)
-    $local MPI_Request req, MPI_Status status
-    ...
-    $if mpi_id == $(from)
-        DUMP_STUB send...
-        tn_ret = MPI_Isend($(data), $(to), $(tag), $(comm), &req)
-        DUMP_STUB sending...
-        tn_ret = MPI_Wait(&req, &status)
-    $elif mpi_id == $(to)
-        tn_ret = MPI_Irecv($(data), $(from), $(tag), $(comm), &req)
-        DUMP_STUB recving...
-        tn_ret = MPI_Wait(&req, &status)
-        DUMP_STUB recv...
-    BLOCK
+    $(if:!recv)
+        $mpicall MPI_Recv, $(data_dst), $(from), $(tag), $(comm), $(tail)
+    $(elif:recv=irecv)
+        $mpicall MPI_Irecv, $(data_dst), $(from), $(tag), $(comm), $(tail)
+
+subcode: mpi_waitany(N, reqs, idx)
+    $my int idx = 0
+    $(if:status)
+        $mpicall MPI_Waitany, $(N), $(reqs), &idx, &$(status)
+    $(else)
+        $mpicall MPI_Waitany, $(N), $(reqs), &idx, MPI_STATUS_IGNORE
 
 #---- collectives ----------------------------------- 
 subcode: mpi_barrier
@@ -202,6 +175,13 @@ subcode: mpi_scatter(global, local, type)
 
 subcode: mpi_gather(global, local, type)
     MPI_Gatherv($(local), pn_mpi_size[mpi_id], $(type), $(global), pn_mpi_size, pn_mpi_offs, $(type), 0, $(comm))
+
+subcode: mpi_reduce_sum(var)
+    $if mpi_id == 0
+        $mpicall MPI_Reduce, MPI_IN_PLACE, &$(var), 1, MPI_INT, MPI_SUM, 0, $(comm)
+    $else
+        $mpicall MPI_Reduce, &$(var), NULL, 1, MPI_INT, MPI_SUM, 0, $(comm)
+
 
 #---- onesided ---------------------------- 
 #- implicit: $(data), $(win)
@@ -225,7 +205,7 @@ subcode:: on_mpi_finalize
 
 #---- convenience ---------------------------- 
 subcode: hello
-    $print Hello from $mpi_name, $mpi_id/$mpi_size
+    $print Hello, $mpi_id/$mpi_size
 
 #---- app: distribute --------------------------- 
 subcode: mpi_distribute(N)
