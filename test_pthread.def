@@ -2,29 +2,38 @@ include: c/pthread.def
 include: c/bench.def
 module: c
 
+macros:
+    SET_AFFINITY: 1
+    N_THREADS: 8
+    N_iter: 10000000
+
 page: test
-    &call launch_threads, $(N_THREADS)
+    # CC: gcc -std=gnu99 -O3
+    $global num_threads=$(N_THREADS)
+    $if argc == 2
+        num_threads = atoi(argv[1])
+
+    &call launch_threads, num_threads
         $print Hello from thread $tid
         $(if:tid=0)
             $call main_fn
         $(else)
             $call sub_fn
 
-macros:
-    N_THREADS: 4
-    N_iter: 10000000
-
 subcode: main_fn
     $global int counter = 0
-    tn_total = $(N_iter) * ($(N_THREADS) - 1)
+    tn_total = $(N_iter) * (num_threads - 1)
 
     $call time_start
-    $while __atomic_load_n(&counter, __ATOMIC_ACQUIRE) < tn_total
-        NOOP
+    $if num_threads == 1
+        $call sub_fn
+    $else
+        $while __atomic_load_n(&counter, __ATOMIC_ACQUIRE) < tn_total
+            NOOP
     $call time_finish, dur
 
     dur *= 1e9 / $(N_iter)
-    $print $(N_THREADS) threads, $(N_iter)x, avg.duration $dur ns
+    $print $num_threads threads, $(N_iter)x, avg.duration $dur ns
 
 subcode: sub_fn
     $for i=0:$(N_iter)

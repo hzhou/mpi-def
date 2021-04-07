@@ -1,0 +1,24 @@
+page: bench
+    module: perl
+
+    
+    my $cmd = "mpirun -bind-to hwthread -map-by core -np 2 out/test_latency"
+    $print $cmd ...
+
+    $print " warm-up ..."
+    $for 10
+        system $cmd
+
+    my $count=50
+    my ($sum1, $sum2)
+    $for $i=$count
+        $if ($i+1) % 10 ==0
+            my $t_avg = $sum1/$i
+            $print - $i - $t_avg
+        my $t = `$cmd`
+        $if $t=~/(\d+) - (\S+)/
+            $sum1 += $2
+            $sum2 += $2*$2
+    my $avg = $sum1/$count
+    my $std = sqrt($sum2/$count - $avg*$avg)
+    $print "    repeat of $count - $avg +/- $std\n"
