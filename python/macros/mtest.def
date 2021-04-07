@@ -1,0 +1,45 @@
+include: python/mpi.def
+include: macros/mtest_data.def
+
+subcode: mtest_frame
+    $import numpy
+    &call mpi_run
+        errs = 0
+        $call main
+        $call report_errs
+
+    subcode: report_errs
+        $(set:comm=MPI_COMM_WORLD)
+        total_errs = 0
+        recvdata = numpy.zeros(1, dtype=numpy.int)
+        senddata = errs * numpy.arange(1, dtype=numpy.int)
+        $(comm).Reduce(senddata, recvdata)
+        $if mpi_id == 0
+            $if recvdata[0] == 0
+                $print "  No Errors."
+            $else
+                $print "  Found ${recvdata[0]} errors."
+
+subcode: mtest_p2p_send
+    $(if:!data_init)
+        $call mtest_set_data, "Testing Message"
+    &call test_p2p, 0, 1
+        $(if:is_p1)
+            $call test_send
+        $(else)
+            $call test_recv
+    subcode: test_send
+        $(comm).send(data, dest=$(p2), tag=$(tag))
+    subcode: test_recv
+        data = $(comm).recv(source=$(p1), tag=$(tag))
+
+subcode: test_p2p(p1, p2)
+    $if $(rank) == $(p1)
+        $(set:is_p1=1)
+        $call mtest_p2p_init
+        BLOCK
+        $call mtest_p2p_check
+    $elif $(rank) == $(p2)
+        $call mtest_p2p_init
+        BLOCK
+        $call mtest_p2p_check

@@ -1,0 +1,13 @@
+subcode: mtest_set_data(val)
+    $(export:data_init=$(val))
+
+#--------
+subcode: mtest_p2p_init
+    $(if:is_p1)
+        data = $(data_init)
+
+subcode: mtest_p2p_check
+    $(if:is_p2)
+        $if data != $(data_init)
+            $print Expect [$(data_init)], got [$data]
+            errs += 1

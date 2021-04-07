@@ -1,0 +1,10 @@
+include: macros/mtest.def
+
+page: test_send, mtest_frame
+    run: mpirun -n 4
+    $call mtest_p2p_send
+
+page: test, mpi_frame
+    run: mpirun -n 4
+    $dump $(rank), $(size)
+
