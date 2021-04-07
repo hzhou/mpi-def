@@ -1,0 +1,11 @@
+include: c/mpi.def
+
+page: test, mpi_frame
+    run: mpirun -n 4
+
+    $print $mpi_id/$mpi_size
+
+    n_size = 0
+    $mpicall MPI_Comm_size, $(comm), &n_size
+    $dump n_size
+

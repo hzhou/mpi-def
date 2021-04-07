@@ -1,0 +1,18 @@
+macros:
+    max_data_size: 1000000
+
+subcode: create_bottom_type(var, dt)
+    $my $(dt)
+    $my MPI_Aint addr, n_len=1, dt_old=MPI_INT
+    $mpicall MPI_Get_address, &$(var), &addr
+    $mpicall MPI_Type_create_struct, 1, &n_len, &addr, &dt_old, &$(dt)
+    $mpicall MPI_Type_commit, &$(dt)
+    BLOCK
+    $mpicall MPI_Type_free, &$(dt)
+
+subcode: attach_bsend_buffer
+    $global char bsend_buffer[$(max_data_size)]
+    $mpicall MPI_Buffer_attach, bsend_buffer, $(max_data_size)
+    BLOCK
+    $my void *p_tmp, n_tmp
+    $mpicall MPI_Buffer_detach, &p_tmp, &n_tmp

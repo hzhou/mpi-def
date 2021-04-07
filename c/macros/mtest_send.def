@@ -1,0 +1,146 @@
+include: macros/mtest_data.def
+
+subcode: mtest_p2p_send
+    $(if:!data)
+        $call mtest_set_data_one, int, MPI_INT
+    $(if:send~.*rsend)
+        $(set:barrier=1)
+        $(set:recv=irecv)
+
+    &call test_p2p, 0, 1
+        $(if:is_p1)
+            $call test_send
+        $(elif:is_p2)
+            $call test_recv
+
+    subcode: test_send
+        $(if:send~i)
+            $local req
+            $(set-1:req=req)
+            $(set-1:wait=1)
+        $(elif:send~p)
+            $local req
+            $(set-1:req=req)
+            $(set:send=$(send:1:)_init)
+            $(set-1:start=1)
+            $(set-1:waitfree=1)
+
+        $(if:send~.*bsend)
+            $global char bsend_buffer[$(max_data_size)]
+            $mpicall MPI_Buffer_attach, bsend_buffer, $(max_data_size)
+            $(set-1:bsend=1)
+
+        $call mpi_send, $(p2)
+
+    subcode: test_recv
+        $(if:recv~i)
+            $local req
+            $(set-1:req=req)
+            $(set-1:wait=1)
+        $(elif:recv~p)
+            $local req
+            $(set-1:req=req)
+            $(set:recv=$(recv:1:)_init)
+            $(set-1:start=1)
+            $(set-1:waitfree=1)
+
+        $(if:recv_anytag)
+            $(set:tag=MPI_ANY_TAG)
+        $(if:recv_anysrc)
+            $call mpi_recv, MPI_ANY_SOURCE
+        $(else)
+            $call mpi_recv, $(p1)
+
+#---------------------------------------- 
+subcode: test_p2p(p1, p2)
+    $if mpi_id == $(p1)
+        $(set:is_p1=1)
+        $call mtest_p2p_init
+        $(if:barrier)
+            $call mpi_barrier
+        BLOCK
+        $call @start
+        $call @wait
+        $call mtest_p2p_check
+    $elif mpi_id == $(p2)
+        $(set:is_p2=1)
+        $call mtest_p2p_init
+        BLOCK
+        $call @start
+        $(if:barrier)
+            $call mpi_barrier
+        $call @wait
+        $call mtest_p2p_check
+    $(if:barrier)
+        $else
+            $call mpi_barrier
+
+    subcode: start
+        $(if:start)
+            $mpicall MPI_Start, &$(req)
+    subcode: wait
+        $(if:wait)
+            $call mpi_wait
+        $(elif:waitfree)
+            $call mpi_wait
+            $mpicall MPI_Request_free, &$(req)
+        $(if:bsend)
+            $my void *p_tmp, n_tmp
+            $mpicall MPI_Buffer_detach, &p_tmp, &n_tmp
+
+#---------------------------------------- 
+subcode: test_send_MAX_MSGS(p1, p2, N)
+    $if mpi_id == $(p1)
+        $call mpi_barrier
+        $call init_send
+        $for i=0:$(N)
+            $call mpi_send, $(p2) 
+    $elif mpi_id == $(p2)
+        $(set:recv=irecv)
+        $call init_recv
+        $for i=0:$(N)
+            $call mpi_recv, MPI_ANY_SOURCE
+
+        $call mpi_barrier
+
+        $for i=0:$(N)
+            $call mpi_waitany, $(N), reqs, idx
+            $call check_status_count, $(N)-idx
+            $call check_recv_buf, idx
+    $else
+        $call mpi_barrier
+
+    subcode: init_send
+        $local int buf[$(N)][$(N)]
+        $for i=0:$(N)
+            $for j=0:$(N)
+                buf[i][j] = i*$(N) + j
+        $(export:data_src=buf[i], $(N)-i, MPI_INT)
+
+    subcode: init_recv
+        $for i=0:$(N)
+            $for j=0:$(N)
+                buf[i][j] = -1
+        $(export:data_dst=buf[i], $(N), MPI_INT)
+
+        $my MPI_Request reqs[$(N)]
+        $(export:req=reqs[i])
+
+        $my MPI_Status status
+        $(export:status=status)
+
+    subcode: check_status_count(N)
+        $my int count
+        $mpicall MPI_Get_count, &status, MPI_INT, &count
+        $if count != $(N)
+            $if errs < 10
+                $print "Got count = %d, expect %d", (int) count, $(N)
+            errs++
+
+    subcode: check_recv_buf(idx)
+        $for j=0:$(N)-$(idx)
+            $if buf[$(idx)][j] !=  $(idx) * $(N) + j
+                $if errs < 10
+                    $print "Recved message %d [%d] is %d, should be %d", $(idx), j, buf[$(idx)][j], $(idx) * $(N) + j
+                errs++
+

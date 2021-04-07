@@ -1,0 +1,56 @@
+include: macros/mtest.def
+include: macros/mtest_send.def
+include: macros/mtest_misc.def
+
+macros:
+    # testlist: anyall, bottom, bsend, precv
+    testlist: precv
+
+page: test_send, mtest_frame
+    run: mpirun -l -n 4
+    # &call mtest_set_data_n, double, MPI_AINT, 100000
+    &call mtest_set_data_noncontig, char, MPI_CHAR, 10
+        $call mtest_p2p_send
+    # $call test_all
+
+subcode: test_all
+    $(for:recv in recv, irecv, precv)
+        $(for:send in send, bsend, rsend, ssend)
+            $(for:t in -,i,p)
+                $(if:t~[ip])
+                    $(set:send=$(t)$(send))
+                $if mpi_id == 0 || mpi_id == 1
+                    $print Testing $(send) / $(recv)...
+                $call mtest_p2p_send
+
+page: test_pt2pt, mtest_frame
+    run: mpirun -l -n 4
+
+    $(for:$(testlist))
+        $call mtest_info, TEST: $1 ...
+        $call test_$1
+
+#---------------------------------------- 
+subcode: test_anyall
+    $call test_send_MAX_MSGS, 0, 1, 30
+
+subcode: test_bottom
+    &call create_bottom_type, n_var, dt_new
+        &call p2p_verify_int, n_var
+            $call test_send, MPI_BOTTOM, 1, dt_new
+
+subcode: test_bsend
+    &call attach_bsend_buffer, 1024
+        &call p2p_verify_int, n_var
+            $(set:send=bsend)
+            $call test_send, &n_var, 1, MPI_INT
+
+subcode: test_precv
+    $my int counts[]={64, 32768, 2000000}
+    $for i=0:3
+        &call p2p_verify_ints, counts[i]
+            $(set:recv=wait_precv)
+            $(set:send=wait_isend)
+            $(set:recv_anysrc=1)
+            $(set:recv_anytag=1)
+            $call test_send, buf, counts[i], MPI_INT
