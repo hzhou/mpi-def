@@ -19,6 +19,8 @@ macros:
     mpi: 1
     tag: 0
     comm: MPI_COMM_WORLD
+    rank: mpi_id
+    size: mpi_size
 
     mpi_n1: MPI_BYTE
     mpi_n2: MPI_SHORT
@@ -58,10 +60,10 @@ subcode:0 mpicall(fname, @params)
 
 #---------------------------------------- 
 subcode: with_p2p(p1, p2)
-    $if mpi_id == $(p1)
+    $if $(rank) == $(p1)
         $(set:is_p1=1)
         BLOCK
-    $elif mpi_id == $(p2)
+    $elif $(rank) == $(p2)
         $(set:is_p2=1)
         BLOCK
 
@@ -91,7 +93,7 @@ subcode: with_p2p(p1, p2)
             $call mpi_send, $(p1)
 
 subcode: ifelse_region(p0)
-    $if mpi_id == $(p0)
+    $if $(rank) == $(p0)
         $(set:is_p1=1)
         BLOCK
     $else
@@ -100,20 +102,20 @@ subcode: ifelse_region(p0)
 
 subcode: ring_region
     # left and right
-    $if mpi_id == 0
+    $if $(rank) == 0
         $(set:is_first=1)
-        $(set:_l=mpi_size-1)
+        $(set:_l=$(size)-1)
         $(set:_r=1)
         BLOCK
-    $elif mpi_id==mpi_size-1
+    $elif $(rank)==$(size)-1
         $(set:is_last=1)
-        $(set:_l=mpi_id-1)
+        $(set:_l=$(rank)-1)
         $(set:_r=0)
         BLOCK
     $else
         $(set:is_middle=1)
-        $(set:_l=mpi_id-1)
-        $(set:_r=mpi_id+1)
+        $(set:_l=$(rank)-1)
+        $(set:_r=$(rank)+1)
         BLOCK
 
 #---- shorthand ---------------------------------- 
@@ -133,28 +135,34 @@ subcode: parse_data
 subcode: mpi_send(to)
     $(if:!data_src)
         $(set:data_src=$(data))
-
     $(if:!send)
-        $mpicall MPI_Send, $(data_src), $(to), $(tag), $(comm)
-    $(elif:send=isend)
-        $mpicall MPI_Isend, $(data_src), $(to), $(tag), $(comm), &$(req)
-    $(elif:send=bsend)
-        $mpicall MPI_Bsend, $(data_src), $(to), $(tag), $(comm)
+        $(set:send=send)
+
+    $(if:send=send or send=bsend or send=rsend or send=ssend)
+        $mpicall MPI_$(send:ucfirst), $(data_src), $(to), $(tag), $(comm)
+    $(else)
+        $mpicall MPI_$(send:ucfirst), $(data_src), $(to), $(tag), $(comm), &$(req)
 
 subcode: mpi_recv(from)
     $(if:!data_dst)
         $(set:data_dst=$(data))
-    $(if:recv=irecv)
+    $(if:!recv)
+        $(set:recv=recv)
+
+    $(if:recv!=recv)
         $(set:tail=&$(req))
     $(elif:status)
         $(set:tail=&$(status))
     $(else)
         $(set:tail=MPI_STATUS_IGNORE)
 
-    $(if:!recv)
-        $mpicall MPI_Recv, $(data_dst), $(from), $(tag), $(comm), $(tail)
-    $(elif:recv=irecv)
-        $mpicall MPI_Irecv, $(data_dst), $(from), $(tag), $(comm), $(tail)
+    $mpicall MPI_$(recv:ucfirst), $(data_dst), $(from), $(tag), $(comm), $(tail)
+
+subcode: mpi_wait
+    $(if:status)
+        $mpicall MPI_Wait, &$(req), &$(status)
+    $(else)
+        $mpicall MPI_Wait, &$(req), MPI_STATUS_IGNORE
 
 subcode: mpi_waitany(N, reqs, idx)
     $my int idx = 0
@@ -168,16 +176,14 @@ subcode: mpi_barrier
     MPI_Barrier($(comm))
 
 subcode: mpi_bcast
-    MPI_Bcast($(data), 0, $(comm))
-
-subcode: mpi_scatter(global, local, type)
-    MPI_Scatterv($(global), pn_mpi_size, pn_mpi_offs, $(type), $(local), pn_mpi_size[mpi_id], $(type), 0, $(comm))
-
-subcode: mpi_gather(global, local, type)
-    MPI_Gatherv($(local), pn_mpi_size[mpi_id], $(type), $(global), pn_mpi_size, pn_mpi_offs, $(type), 0, $(comm))
+    $(if:!root)
+        $(set:root=0)
+    MPI_Bcast($(data), $(root), $(comm))
 
 subcode: mpi_reduce_sum(var)
-    $if mpi_id == 0
+    $(if:!root)
+        $(set:root=0)
+    $if $(rank) == $(root)
         $mpicall MPI_Reduce, MPI_IN_PLACE, &$(var), 1, MPI_INT, MPI_SUM, 0, $(comm)
     $else
         $mpicall MPI_Reduce, &$(var), NULL, 1, MPI_INT, MPI_SUM, 0, $(comm)
@@ -207,37 +213,11 @@ subcode:: on_mpi_finalize
 subcode: hello
     $print Hello, $mpi_id/$mpi_size
 
-#---- app: distribute --------------------------- 
-subcode: mpi_distribute(N)
-    $(setmacro:mpi_distribute=1)
-    $global n_mpi_N
-    $global pn_mpi_offs = NULL, pn_mpi_size = NULL
-    $if pn_mpi_offs == NULL
-        $allocate(mpi_size+1) pn_mpi_offs, pn_mpi_size
-    n_mpi_N = $(N)
-    tn_per = $(N)/mpi_size
-    tn_remain = $(N) % mpi_size
-    j = 0
-    $for i=0:mpi_size
-        pn_mpi_offs[i] = j
-        $if i<tn_remain
-            pn_mpi_size[i] = tn_per + 1
-        $else
-            pn_mpi_size[i] = tn_per
-        j+=pn_mpi_size[i]
-    pn_mpi_offs[mpi_size] = $(N)
-
-subcode:: on_mpi_finalize
-    $(if:mpi_distribute)
-        $if pn_mpi_offs
-            free(pn_mpi_offs)
-            free(pn_mpi_size)
-
 #--------------------------------------------- 
 subcode: debug_hook(cond)
     $include unistd
     $if $(cond)
-        $print "mpi [$mpi_id] PID %d is ready for attach ...", getpid()
+        $print "mpi [$$(rank)] PID %d is ready for attach ...", getpid()
         $local int debug_i=0
         $while debug_i == 0
             sleep(5)

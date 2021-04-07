@@ -1,0 +1,91 @@
+include: mpi_common.def
+subcode: mpi_frame
+    &call mpi_run
+        $call main
+
+subcode: _autoload
+    $register_name(status) MPI_Status
+    $register_prefix(comm) MPI_Comm
+    $register_prefix(info) MPI_Info
+    $register_prefix(req) MPI_Request
+    $register_prefix(dt) MPI_Datatype
+
+subcode: mpi_run
+    $uselib mpi
+    PROGRAM $(_pagename)
+        IMPLICIT NONE
+        include "mpif.h"
+        DUMP_STUB global_init
+        $global mpi_id, mpi_size, ierror: integer
+        call mpi_init(ierror)
+        call mpi_comm_size($(comm), mpi_size, ierror)
+        call mpi_comm_rank($(comm), mpi_id, ierror)
+        BLOCK
+        call mpi_finalize(ierror)
+    END PROGRAM
+
+#----------------------------------------
+subcode: _autoload
+    $plugin mpicall
+
+# overwrite subcode mpicall to change the default error behavior
+subcode:0 mpicall(fname, @params)
+    call $(fname)($(params), ierror)
+
+#---------------------------------------- 
+subcode: with_p2p(p1, p2)
+    $if $(rank) == $(p1)
+        $(set:is_p1=1)
+        BLOCK
+    $elif $(rank) == $(p2)
+        $(set:is_p2=1)
+        BLOCK
+
+subcode: mpi_send(to)
+    $(if:!data_src)
+        $(set:data_src=$(data))
+    $(if:!send)
+        $(set:send=send)
+
+    $(if:send=send or send=bsend or send=rsend or send=ssend)
+        $mpicall MPI_$(send:ucfirst), $(data_src), $(to), $(tag), $(comm)
+    $(else)
+        $mpicall MPI_$(send:ucfirst), $(data_src), $(to), $(tag), $(comm), $(req)
+
+subcode: mpi_recv(from)
+    $(if:!data_dst)
+        $(set:data_dst=$(data))
+    $(if:!recv)
+        $(set:recv=recv)
+
+    $(if:recv!=recv)
+        $(set:tail=$(req))
+    $(elif:status)
+        $(set:tail=$(status))
+    $(else)
+        $(set:tail=MPI_STATUS_IGNORE)
+
+    $mpicall MPI_$(recv:ucfirst), $(data_dst), $(from), $(tag), $(comm), $(tail)
+
+subcode: mpi_wait
+    $(if:status)
+        $mpicall MPI_Wait, &$(req), $(status)
+    $(else)
+        $mpicall MPI_Wait, &$(req), MPI_STATUS_IGNORE
+
+#---- collectives ----------------------------------- 
+subcode: mpi_barrier
+    $mpicall MPI_Barrier, $(comm)
+
+subcode: mpi_bcast
+    $(if:!root)
+        $(set:root=0)
+    $mpicall MPI_Bcast, $(data), $(root), $(comm)
+
+subcode: mpi_reduce_sum(var)
+    $(if:!root)
+        $(set:root=0)
+    $if $(rank) == $(root)
+        $mpicall MPI_Reduce, MPI_IN_PLACE, $(var), 1, MPI_INTEGER, MPI_SUM, $(root), $(comm)
+    $else
+        $mpicall MPI_Reduce, $(var), $(var), 1, MPI_INTEGER, MPI_SUM, $(root), $(comm)

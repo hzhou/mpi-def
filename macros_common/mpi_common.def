@@ -1,0 +1,16 @@
+macros:
+    mpi: 1
+    tag: 0
+    comm: MPI_COMM_WORLD
+    rank: mpi_id
+    size: mpi_size
+
+    mpi_n1: MPI_BYTE
+    mpi_n2: MPI_SHORT
+    mpi_n4: MPI_INT
+    mpi_n8: MPI_2INT
+    mpi_f4: MPI_FLOAT
+    mpi_f8: MPI_DOUBLE
+    mpi_c16: MPI_LONG_DOUBLE
+
+

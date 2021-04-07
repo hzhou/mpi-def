@@ -1,0 +1,7 @@
+subcode: with_info(key, @value)
+    $local MPI_Info info
+    MPI_Info_create(&info)
+    $(if:key!=-)
+        MPI_Info_set(info, "$(key)", $(value))
+    BLOCK
+    MPI_Info_free(&info)

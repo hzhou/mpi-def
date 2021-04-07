@@ -1,0 +1,20 @@
+include: mpi_common.def
+subcode: mpi_frame
+    &call mpi_run
+        $call main
+
+subcode: mpi_run
+    $(block:global_init)
+        $import MPI from mpi4py
+        MPI_COMM_WORLD = MPI.COMM_WORLD
+        mpi_id = MPI_COMM_WORLD.Get_rank()
+        mpi_size = MPI_COMM_WORLD.Get_size()
+    
+    $def main
+        BLOCK
+
+    $(block:global_exit)
+        $: \x23 ---------------------------------------------------------
+        $if __name__ == "__main__"
+            main()
+
