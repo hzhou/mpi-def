@@ -1,0 +1,80 @@
+subcode: mtest_set_data_one(c_type, mpi_type)
+    $local $(c_type) data
+    $(export:data=data, 1, $(mpi_type))
+    $(export:n=-)
+
+subcode: mtest_set_data_n(c_type, mpi_type, n)
+    $local $(c_type) *buf
+    $allocate($(n)) buf
+    $(set:data=buf, $(n), $(mpi_type))
+    BLOCK
+    free(buf)
+
+subcode: mtest_set_data_noncontig(c_type, mpi_type, n)
+    $local $(c_type) *buf
+    $allocate($(n)*2) buf
+    $local dt_new
+    $mpicall MPI_Type_create_resized, $(mpi_type), 0, sizeof(buf(1))*2, dt_new
+    $mpicall MPI_Type_commit, dt_new
+    $(set:data=buf, $(n), dt_new)
+    $(set:noncontig=1)
+    BLOCK
+    $mpicall MPI_Type_free, dt_new
+    free(buf)
+
+#--------
+subcode: mtest_p2p_init
+    $(if:noncontig)
+        $call mtest_p2p_init_noncontig
+    $(elif:n=-)
+        $call mtest_p2p_init_one
+    $(else)
+        $call mtest_p2p_init_n
+
+subcode: mtest_p2p_check
+    $(if:noncontig)
+        $call mtest_p2p_check_noncontig
+    $(elif:n=-)
+        $call mtest_p2p_check_one
+    $(else)
+        $call mtest_p2p_check_n
+
+#----
+subcode: mtest_p2p_init_one
+    $(if:is_p1)
+        data = 1
+    $(else)
+        data = 0
+
+subcode: mtest_p2p_check_one
+    $(if:is_p2)
+        $call mtest_expect, data, 1
+
+#----
+subcode: mtest_p2p_init_n
+    $local integer i
+    $for i=1:$(n)
+        $(if:is_p1)
+            buf(i) = i
+        $(else)
+            buf(i) = -1
+
+subcode: mtest_p2p_check_n
+    $(if:is_p2)
+        $for i=1:$(n)
+            $call mtest_expect, buf(i), i
+
+#----
+subcode: mtest_p2p_init_noncontig
+    $local integer i
+    $for i=1:$(n) * 2
+        $(if:is_p1)
+            buf(i) = (i + 1) / 2
+        $(else)
+            buf(i) = -1
+
+subcode: mtest_p2p_check_noncontig
+    $(if:is_p2)
+        $for i=1:$(n)
+            $call mtest_expect, buf(i * 2 - 1), i
+            $call mtest_expect, buf(i * 2), -1

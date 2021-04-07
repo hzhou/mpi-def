@@ -1,0 +1,27 @@
+include: fortran/mpi.def
+
+subcode: mtest_frame
+    &call mpi_run
+        $global errs : integer
+        errs = 0
+        $call main
+        $call report_errs
+
+    subcode: report_errs
+        $(set:comm=MPI_COMM_WORLD)
+        $call mpi_reduce_sum, errs
+        $if mpi_id == 0
+            $if errs == 0
+                $print "  No Errors."
+            $else
+                $print "  Found $errs errors."
+
+subcode: mtest_expect(var, val)
+    $if $(var) /= $(val)
+        $if errs < 10
+            print *, "Got $(var) = ", $(var), ", expect ", $(val)
+        errs+=1
+
+subcode: mtest_info(@msg)
+    $if mpi_id == 0
+        print *, $(msg)
