@@ -1,0 +1,88 @@
+subcode: Type_commit(dt)
+    BLOCK
+    $(if:dt_list)
+        $(for:dt in $(dt_list))
+            $mpicall MPI_Type_free, &$(dt)
+
+    subcode: _new_type
+        $(set:dt_old=$(dt))
+        $temp MPI_Datatype dt
+        BLOCK
+        $(set-2:dt_list[,]=$(dt))
+        $(set-2:dt=$(dt))
+
+    subcode: type_contig(n)
+        &call _new_type
+            $mpicall MPI_Type_contiguous, $(n), $(dt_old), &$(dt)
+
+    subcode: type_vector(n, blklen, stride)
+        &call _new_type
+            $mpicall MPI_Type_vector, $(n), $(blklen), $(stride), $(dt_old), &$(dt)
+
+    subcode: type_hvector(n, blklen, stride)
+        &call _new_type
+            $mpicall MPI_Type_hvector, $(n), $(blklen), $(stride), $(dt_old), &$(dt)
+
+    subcode: type_struct(@plist)
+        &call _new_type
+            $call set_struct_params, $(plist)
+            $mpicall MPI_Type_create_struct, $(n), blkls, disps, types, &$(dt)
+
+    subcode: type_subarray(@plist)
+        &call _new_type
+            $call set_subarray_params, $(plist)
+            $mpicall MPI_Type_create_subarray, $(n), sizes, subsizes, starts, MPI_ORDER_C, $(dt_old), &$(dt)
+
+    subcode: type_darray(size, rank, @plist)
+        &call _new_type
+            $call set_darray_params, $(plist)
+            $mpicall MPI_Type_create_darray, $(size), $(rank), $(n), gsizes, distribs, dargs, psizes, MPI_ORDER_C, $(dt_old), &$(dt)
+
+perlcode: set_struct_params
+    my @tlist = split /,\s*/, $param
+    my $n = @tlist
+    $n /= 3
+    my (@t1, @t2, @t3)
+    $for $i=0:$n
+        push @t1, shift @tlist
+        push @t2, shift @tlist
+        push @t3, shift @tlist
+    MyDef::compileutil::set_current_macro("n", $n)
+    push @$out, "int types[$n] = {". join(', ', @t1). "};"
+    push @$out, "int blkls[$n] = {". join(', ', @t2). "};"
+    push @$out, "MPI_Aint disps[$n] = {". join(', ', @t3). "};"
+
+perlcode: set_subarray_params
+    $if $param=~/(\d+),\s*\[(.*?)\],\s*\[(.*?)\],\s*\[(.*?)\]/ -> $n, $sizes, $subsizes, $starts
+        MyDef::compileutil::set_current_macro("n", $n)
+        push @$out, "int sizes[$n] = {$sizes};"
+        push @$out, "int subsizes[$n] = {$subsizes};"
+        push @$out, "int starts[$n] = {$starts};"
+
+perlcode: set_darray_params
+    $if $param=~/(\d+),\s*\[(.*?)\],\s*\[(.*?)\](.*)/ -> $n, $gsizes, $psizes, $tail
+        my @psizes = split /,\s*/, $psizes
+        $foreach $p in @psizes
+            $if $p eq "-"
+                $p = 1
+
+        my (@distribs, @dargs)
+        my @tlist
+        $if $tail=~/\s*,\s*\[(.*?)\]/
+            @tlist = split /,\s*/, $1
+        $for $i=0:$n
+            $if $psizes[$i] == 1
+                $distribs[$i] = "MPI_DISTRIBUTE_NONE"
+                $dargs[$i] = "MPI_DISTRIBUTE_DFLT_DARG"
+            $elif !$tlist[$i] or $tlist[$i] eq "-"
+                $distribs[$i] = "MPI_DISTRIBUTE_BLOCK"
+                $dargs[$i] = "MPI_DISTRIBUTE_DFLT_DARG"
+            $else
+                $distribs[$i] = "MPI_DISTRIBUTE_CYCLIC"
+                $dargs[$i] = $tlist[$i]
+
+        MyDef::compileutil::set_current_macro("n", $n)
+        push @$out, "int gsizes[$n] = {$gsizes};"
+        push @$out, "int psizes[$n] = {" . join(', ', @psizes) . "};"
+        push @$out, "int distribs[$n] = {" . join(', ', @distribs) . "};"
+        push @$out, "int dargs[$n] = {" . join(', ', @dargs) . "};"
