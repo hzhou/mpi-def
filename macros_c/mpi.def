@@ -31,20 +31,19 @@ macros:
     mpi_f8: MPI_DOUBLE
     mpi_c16: MPI_LONG_DOUBLE
 
-subcode: mpi_run
-    $(if:!SKIP_SYSTEM_MPI)
-        $include mpi
-        $uselib mpi
+subcode: mpi_run(@mode)
+    $include mpi
+    $uselib mpi
 
     $global int mpi_size, int mpi_id
-    MPI_Init(NULL, NULL)
+    $(if:mode=MPI_THREAD_MULTIPLE)
+        $my int mpi_thread_level
+        MPI_Init_thread(NULL, NULL, $(mode), &mpi_thread_level)
+        assert(mpi_thread_level == $(mode))
+    $(else)
+        MPI_Init(NULL, NULL)
     MPI_Comm_size($(comm), &mpi_size)
     MPI_Comm_rank($(comm), &mpi_id)
-
-    $(if:0)
-        $global char mpi_name[MPI_MAX_PROCESSOR_NAME]
-        $local tn_len
-        MPI_Get_processor_name(mpi_name, &tn_len)
 
     BLOCK
 

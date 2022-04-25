@@ -15,6 +15,10 @@ subcode: Type_commit(dt)
         &call _new_type
             $mpicall MPI_Type_contiguous, $(n), $(dt_old), &$(dt)
 
+    subcode: type_dup
+        &call _new_type
+            $mpicall MPI_Type_dup, $(dt_old), &$(dt)
+
     subcode: type_vector(n, blklen, stride)
         &call _new_type
             $mpicall MPI_Type_vector, $(n), $(blklen), $(stride), $(dt_old), &$(dt)
@@ -23,10 +27,26 @@ subcode: Type_commit(dt)
         &call _new_type
             $mpicall MPI_Type_hvector, $(n), $(blklen), $(stride), $(dt_old), &$(dt)
 
+    subcode: type_blkidx(n, blklen, @plist)
+        &call _new_type
+            int disps_$(dt)[$(n)] = {$(plist)};
+            $mpicall MPI_Type_create_indexed_block, $(n), $(blklen), disps_$(dt), $(dt_old), &$(dt)
+
+    subcode: type_blkhidx(n, blklen, @plist)
+        &call _new_type
+            MPI_Aint disps_$(dt)[$(n)] = {$(plist)};
+            $mpicall MPI_Type_create_hindexed_block, $(n), $(blklen), disps_$(dt), $(dt_old), &$(dt)
+
+    subcode: type_indexed(n, blkls, disps)
+        &call _new_type
+            int blkls_$(dt)[$(n)] = {$(blkls:strip)};
+            int disps_$(dt)[$(n)] = {$(disps:strip)};
+            $mpicall MPI_Type_indexed, $(n), blkls_$(dt), disps_$(dt), $(dt_old), &$(dt)
+
     subcode: type_struct(@plist)
         &call _new_type
             $call set_struct_params, $(plist)
-            $mpicall MPI_Type_create_struct, $(n), blkls, disps, types, &$(dt)
+            $mpicall MPI_Type_create_struct, $(n), blkls_$(dt), disps_$(dt), types_$(dt), &$(dt)
 
     subcode: type_subarray(@plist)
         &call _new_type
@@ -47,10 +67,11 @@ perlcode: set_struct_params
         push @t1, shift @tlist
         push @t2, shift @tlist
         push @t3, shift @tlist
+    my $dt = MyDef::compileutil::get_macro_word("dt")
     MyDef::compileutil::set_current_macro("n", $n)
-    push @$out, "int types[$n] = {". join(', ', @t1). "};"
-    push @$out, "int blkls[$n] = {". join(', ', @t2). "};"
-    push @$out, "MPI_Aint disps[$n] = {". join(', ', @t3). "};"
+    push @$out, "int types_$dt\[$n] = {". join(', ', @t1). "};"
+    push @$out, "int blkls_$dt\[$n] = {". join(', ', @t2). "};"
+    push @$out, "MPI_Aint disps_$dt\[$n] = {". join(', ', @t3). "};"
 
 perlcode: set_subarray_params
     $if $param=~/(\d+),\s*\[(.*?)\],\s*\[(.*?)\],\s*\[(.*?)\]/ -> $n, $sizes, $subsizes, $starts
