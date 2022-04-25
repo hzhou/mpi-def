@@ -1,13 +1,13 @@
-include: macros/mpi.def
+include: macros_c/mpi.def
 
-page: test_send, mpi_frame
+page: test_send, mpi_frame, MPI_THREAD_MULTIPLE
     module: c
     run: mpiexec -np 4
 
     $print Hello world from $mpi_id/$mpi_size
 
     &call with_p2p, 0, 1
-        $local tn_data=mpi_id
+        $local tn_data=42
         $call send_to, &tn_data, 1, MPI_INT
         $(if:is_p2)
             $print Received from rank $(p1): $tn_data

@@ -1,12 +1,12 @@
 include: c/mpi_info.def
 include: c/mpi_datatype.def
 
-subcode: mpi_frame
+subcode: mpi_frame(@mode)
     $include stdio
     $include stdlib
     $call @global
     $function main
-        &call mpi_run
+        &call mpi_run, $(mode)
             $call main
 
 subcode: _autoload
