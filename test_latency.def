@@ -1,26 +1,53 @@
 include: c/mpi.def
+run: osu_latency
 
-# run: osu_latency
 page: test_latency, mpi_frame
     module: c
     exe: mpirun -np 2 out/test_latency
+    SIZE: 8
 
-    $(set:SIZE=8)
-    $allocate($(SIZE)) s_buf
+    $call init_buf, $(SIZE)
     $call get_latency, $(SIZE), 100000
 
 page: osu_latency, mpi_frame
     module: c
     exe: mpirun -np 2 out/osu_latency
-    # $(set:MAX=5000000)
-    $(set:MAX=100)
-    $allocate($(MAX)) s_buf
+    MAX: 5000000
+    # MAX: 100
+
+    $call init_buf, $(MAX)
     $for int size=1; size<$(MAX); size*=2
         $if size < 8192
             tn_iter = 50000
         $else
             tn_iter = 1000
         $call get_latency, size, tn_iter
+
+page: cuda_latency, mpi_frame
+    module: c
+    exe: MPIR_CVAR_ODD_EVEN_CLIQUES=1 mpirun -np 2 out/cuda_latency
+    MAX: 5000000
+    # MAX: 100
+
+    $call init_cuda
+
+    $for int size=1; size<$(MAX); size*=2
+        $if size < 8192
+            tn_iter = 1000
+        $else
+            tn_iter = 1000
+        tn_iter = 1
+        $call get_latency, size, tn_iter
+
+    subcode: init_cuda
+        $include cuda_runtime
+        $uselib cudart
+        $local void *s_buf
+        cudaMalloc(&s_buf, $(MAX))
+
+#---------------------------------------- 
+subcode: init_buf(size)
+    $allocate($(size)) s_buf
 
 subcode: get_latency(size, iters)
     $local tn_data
@@ -29,8 +56,8 @@ subcode: get_latency(size, iters)
 
     $(mset:tag1=100, tag2=101)
 
-    &call p2p_region, 0, 1
-        $(for:try in 0, 1)
+    &call with_p2p, 0, 1
+        $(for:try in 1)
             t_start = get_wtime()
             $for i=0:$(iters)
                 $call send_to, s_buf, $(size), MPI_CHAR
