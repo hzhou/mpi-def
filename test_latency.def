@@ -1,13 +1,14 @@
 include: c/mpi.def
+# run: test_latency
 run: osu_latency
 
 page: test_latency, mpi_frame
     module: c
-    exe: mpirun -np 2 out/test_latency
+    exe: mpirun -l -np 2 out/test_latency
     SIZE: 8
 
     $call init_buf, $(SIZE)
-    $call get_latency, $(SIZE), 100000
+    $call get_latency, $(SIZE), 1
 
 page: osu_latency, mpi_frame
     module: c
@@ -46,6 +47,10 @@ page: cuda_latency, mpi_frame
         cudaMalloc(&s_buf, $(MAX))
 
 #---------------------------------------- 
+macros:
+    # noncontig: 1
+
+#---------------------------------------- 
 subcode: init_buf(size)
     $allocate($(size)) s_buf
 
@@ -55,13 +60,20 @@ subcode: get_latency(size, iters)
     $local t_start, t_end: double
 
     $(mset:tag1=100, tag2=101)
+    $(if:noncontig)
+        $local datatype: MPI_Datatype
+        MPI_Type_vector($(noncontig), $(size), $(size)+4, MPI_CHAR, &datatype)
+        MPI_Type_commit(&datatype)
+        $(set:data=1, datatype)
+    $(else)
+        $(set:data=$(size), MPI_CHAR)
 
     &call with_p2p, 0, 1
-        $(for:try in 1)
+        $(for:try in 0,1)
             t_start = get_wtime()
             $for i=0:$(iters)
-                $call send_to, s_buf, $(size), MPI_CHAR
-                $call send_back, s_buf, $(size), MPI_CHAR
+                $call send_to, s_buf, $(data)
+                $call send_back, s_buf, $(data)
             t_end = get_wtime()
 
             $(if:try=1 and is_p1)
@@ -69,6 +81,8 @@ subcode: get_latency(size, iters)
                 $if tf_diff < 0 
                     tf_diff += 16
                 $print "  %10d - %f\n", $(size), tf_diff*1e6/(2.0*$(iters))
+    $(if:noncontig)
+        MPI_Type_free(&datatype)
 
 fncode: get_wtime: double
     $include time

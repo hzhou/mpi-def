@@ -32,12 +32,14 @@ subcode: get_bw(size, window, iters)
     $(mset:tag1=100, tag2=101)
     $(set:req=reqs[j])
 
-    &call p2p_region, 0, 1
+    &call with_p2p, 0, 1
         $(for:try in 0, 1)
             t_start = MPI_Wtime()
             $for i=0:$(iters)
                 $for j=0:$(window)
-                    $call isend_to, s_buf, $(size), MPI_CHAR
+                    $(set:send=isend)
+                    $(set:recv=irecv)
+                    $call send_to, s_buf, $(size), MPI_CHAR
                 MPI_Waitall($(window), reqs, MPI_STATUSES_IGNORE)
 
                 $call send_back, &tn_data, 1, MPI_INT
